@@ -5,16 +5,30 @@ use warnings;
 
 use Test::More;
 use Test::Deep;
-use Try::Tiny;
 
-use List::Itertools qw(chain);
+use List::Itertools qw(is_iter chain chain_from_iterable iter list);
 
 
-plan tests => 1
+plan tests => 12;
 
-{
-    cmp_deeply(
-        chain([1, 2, 3], ['x', undef, 'z'], [10, 20, 30, 40]),
-        [[1, 'x', 10], [2, undef, 20], [3, 'z', 30], [undef, undef, 40]]
-    );
+my @list = ([1, 2, 3], ['x', undef, 'z'], [10, 20, 30, 40]);
+my @flat_list = map { @$_ } @list;
+
+my @test = (
+    [ 'chain', sub { chain(@_) } ],
+    [ 'chain_from_iterable from array', sub { chain_from_iterable(\@_) } ],
+    [ 'chain_from_iterable from iterator', sub { chain_from_iterable(iter(\@_)) } ],
+);
+
+for (my $iter = iter(\@test); my ($name, $code) = $iter->next_tuple(); ) {
+    ok(is_iter($code->(@list)), "$name is iterator");
+
+    cmp_deeply(list($code->(@list)), \@flat_list, "$name concatenates arrays");
+
+    my @iterators = map { iter($_) } @list;
+    cmp_deeply(list($code->(@iterators)), \@flat_list, "$name concatenates iterators");
+
+    my $i = 0;
+    my @iterables = map { $i++ % 2 ? iter($_) : $_ } @list;
+    cmp_deeply(list($code->(@iterables)), \@flat_list, "$name concatenates mixed");
 }

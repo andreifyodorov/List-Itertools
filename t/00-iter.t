@@ -7,58 +7,60 @@ use Test::More;
 use Test::Deep;
 use Try::Tiny;
 
-use List::Itertools qw(iter catch_stop for_each);
+use List::Itertools qw(STOP_ITERATION NOT_ITERABLE iter is_iter catch_stop for_each list);
 
 
-plan tests => 2;
+plan tests => 10;
+
+
+ok((try { iter(1, 2, 3) and 0 } catch { /requires 1 parameter/ }), 'iter requires 1 parameter');
+ok((try { iter(1) and 0 } catch { $_->isa(NOT_ITERABLE) }), 'iter requires iterable');
 
 {
     my $iter = iter([]);
-
-    ok(
-        (
-            try {
-                $iter->();
-                0;
-            }
-            catch {
-                $_->isa('List::Itertools::Exceptions::StopIteration')
-            }
-        ),
-        'iterator throws StopIteration'
-    );
-
-    ok($iter->is_iter, 'iterator is iterator');
+    ok((try { $iter->() and 0 } catch { $_->isa(STOP_ITERATION)}), 'iterator throws STOP_ITERATION');
+    ok(is_iter($iter), 'iterator is iterator');
 }
 
+my @list = (1..10, undef, 10..20);
 
 {
-    my $list = [1..10, undef, 10..20];
     my @result;
-    for (my $iter = iter($list); my ($x) = $iter->next(); ) {
+    for (my $iter = iter(\@list); my ($x) = $iter->next; ) {
         push(@result, $x);
     }
-    cmp_deeply(\@result, $list, 'iterator from list');
-}
-
-
-{
-    my $iter = iter([1..10]);
-    my $i = 0;
-    ok((try{ $iter->() } catch_stop { 10 == ++$i }), 'catch_stop cathes stop of iteration');
+    cmp_deeply(\@result, \@list, 'iterator from list iterated with next');
 }
 
 {
-    my $list = [1..10, undef, 10..20];
     my @result;
-    for_each $list, sub { push(@result, $_) };
-    cmp_deeply(\@result, $list, 'for_each iterates lists');
+    my @list = ([1, 2], [2, 3], [3, 4]);
+    for (my $iter = iter(\@list); my ($a, $b) = $iter->next_tuple; ) {
+        push(@result, [$a, $b]);
+    }
+    cmp_deeply(\@result, \@list, 'iterator from list iterated with next_tuple');
+}
+
+
+{
+    my $iter = iter(\@list);
+    my $i = 0;
+    ok((try{ $iter->() } catch_stop { @list == ++$i }), 'catch_stop cathes stop of iteration');
 }
 
 {
-    my $list = [1..10, undef, 10..20];
-    my $iter = iter($list);
+    my @result;
+    for_each \@list, sub { push(@result, $_) };
+    cmp_deeply(\@result, \@list, 'for_each iterates lists');
+}
+
+{
+    my $iter = iter(\@list);
     my @result;
     for_each $iter, sub { push(@result, $_) };
-    cmp_deeply(\@result, $list, 'for_each iterates iterator');
+    cmp_deeply(\@result, \@list, 'for_each iterates iterator');
+}
+
+{
+    cmp_deeply(list(iter(\@list)), \@list, 'list from iterator');
 }

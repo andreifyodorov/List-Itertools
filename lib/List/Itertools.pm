@@ -18,7 +18,11 @@ use Exception::Class (
 
 
 use Exporter 'import';
-our @EXPORT_OK = (qw{iter catch_stop for_each imap chain});
+our @EXPORT_OK = qw(
+    STOP_ITERATION NOT_ITERABLE
+    iter is_iter catch_stop for_each list imap
+    chain chain_from_iterable
+);
 
 
 sub iter_array {
@@ -50,16 +54,28 @@ sub catch_stop(&) {
 
 sub next() {
     my $iter = shift;
+    # TODO: throw something if it's not iter
     try { return $iter->() } catch_stop { return () };
 }
 
+sub next_tuple() {
+    if (my ($tuple) = &next(@_)) {
+        return @$tuple
+    }
+    else {
+        return ();
+    }
+}
 
-sub is_iter { blessed $_[0] && $_[0]->can('next') }
+
+sub is_iter { blessed $_[0] && !!$_[0]->can('next') }
 
 
 sub iter {
-    return $_[0] if is_iter($_[0]);
-    return iter_array($_[0]) if ref $_[0] eq 'ARRAY';
+    my $whatnot = shift;
+    @_ and die(sprintf("iter requires 1 parameter %d given", @_));
+    return $whatnot if is_iter($whatnot);
+    return iter_array($whatnot) if ref($whatnot) eq 'ARRAY';
     NOT_ITERABLE->throw;
 }
 
@@ -82,12 +98,10 @@ sub for_each {
 
 
 sub list {
-    my $iter = $_;
+    my $iter = shift;
     return [@$iter] if ref($iter) eq 'ARRAY';
     my @rv;
-    while (my ($x) = $iter->next) {
-        push(@rv, $x)
-    }
+    for_each $iter, sub { push(@rv, $_) };
     return \@rv;
 }
 
@@ -99,11 +113,10 @@ sub chain {
         while (1) {
             unless ($iter) {
                 STOP_ITERATION->throw unless @$iters;
-                $iter = shift(@$iters);
-                $iter = iter($iter) unless is_iter($iter);
+                $iter = iter(shift(@$iters));
             }
             my $rv;
-            try { $rv = $iter->(); 1; } catch_stop { undef($iter) } or next;
+            try { $rv = $iter->() or 1 } catch_stop { undef($iter) } or next;
             return $rv;
         }
     } => __PACKAGE__;
@@ -111,7 +124,18 @@ sub chain {
 
 
 sub chain_from_iterable {
-    # TODO
+    my $whatnot = shift;
+    @_ and die(sprintf("chain_from_iterable requires 1 parameter %d given", @_));
+    my $iters = iter($whatnot);
+    my $iter;
+    return bless sub {
+        while (1) {
+            $iter = iter($iters->()) unless $iter;
+            my $rv;
+            try { $rv = $iter->() or 1 } catch_stop { undef($iter) } or next;
+            return $rv;
+        }
+    } => __PACKAGE__
 }
 
 

@@ -10,7 +10,7 @@ use Try::Tiny;
 use List::Itertools qw(izip_longest);
 
 
-plan tests => 1
+plan tests => 0
 
 {
     cmp_deeply(
