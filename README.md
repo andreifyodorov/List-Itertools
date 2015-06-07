@@ -1,4 +1,4 @@
-# List-Itertools
+# List::Itertools
 ## Best way to iterate an array is to make it an iterable
 
     for (my $iter = iter(\@array); my ($x) = $iter->next; ) {
