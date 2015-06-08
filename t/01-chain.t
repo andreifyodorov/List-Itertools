@@ -6,7 +6,7 @@ use warnings;
 use Test::More;
 use Test::Deep;
 
-use List::Itertools qw(is_iter chain chain_from_iterable iter list);
+use List::Itertools qw(iter is_iter list chain chain_from_iterable);
 
 
 plan tests => 12;

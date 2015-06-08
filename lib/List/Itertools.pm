@@ -21,20 +21,23 @@ use Exporter 'import';
 our @EXPORT_OK = qw(
     STOP_ITERATION NOT_ITERABLE
     iter is_iter catch_stop for_each list imap
-    chain chain_from_iterable
+    chain chain_from_iterable izip izip_from_iterable izip_longest izip_longest_from_iterable
 );
+
+
+sub iter_code { bless $_[0] => __PACKAGE__ }
 
 
 sub iter_array {
     my $list = shift;
     my $i = 0;
-    return bless sub {
+    return iter_code(sub {
         while (1) {
             defined($list)
                 ? $i < @$list ? return $list->[$i++] : undef($list)
                 : STOP_ITERATION->throw;
         }
-    } => __PACKAGE__;
+    });
 }
 
 
@@ -58,9 +61,10 @@ sub next() {
     try { return $iter->() } catch_stop { return () };
 }
 
+
 sub next_tuple() {
     if (my ($tuple) = &next(@_)) {
-        return @$tuple
+        return @$tuple;
     }
     else {
         return ();
@@ -68,13 +72,14 @@ sub next_tuple() {
 }
 
 
-sub is_iter { blessed $_[0] && !!$_[0]->can('next') }
+sub is_iter { blessed($_[0]) && $_[0]->can('next') }
 
 
 sub iter {
     my $whatnot = shift;
     @_ and die(sprintf("iter requires 1 parameter %d given", @_));
     return $whatnot if is_iter($whatnot);
+    return iter_code($whatnot) if ref($whatnot) eq 'CODE';
     return iter_array($whatnot) if ref($whatnot) eq 'ARRAY';
     NOT_ITERABLE->throw;
 }
@@ -83,10 +88,10 @@ sub iter {
 sub imap(&;@) {
     my $code = shift;
     my $iter = iter(shift);
-    return bless sub {
+    iter_code(sub {
         local $_ = $iter->();
         return $code->();
-    } => __PACKAGE__;
+    });
 }
 
 
@@ -106,47 +111,58 @@ sub list {
 }
 
 
-sub chain {
-    my $iters = \@_;
-    my $iter;
-    return bless sub {
-        while (1) {
-            unless ($iter) {
-                STOP_ITERATION->throw unless @$iters;
-                $iter = iter(shift(@$iters));
-            }
-            my $rv;
-            try { $rv = $iter->() or 1 } catch_stop { undef($iter) } or next;
-            return $rv;
-        }
-    } => __PACKAGE__;
-}
-
-
 sub chain_from_iterable {
-    my $whatnot = shift;
-    @_ and die(sprintf("chain_from_iterable requires 1 parameter %d given", @_));
-    my $iters = iter($whatnot);
+    my $iters = iter(shift);
     my $iter;
-    return bless sub {
+    return iter_code(sub {
         while (1) {
             $iter = iter($iters->()) unless $iter;
             my $rv;
             try { $rv = $iter->() or 1 } catch_stop { undef($iter) } or next;
             return $rv;
         }
-    } => __PACKAGE__
+    });
 }
 
 
-sub izip {
-    # TODO
+sub chain { chain_from_iterable(\@_) }
+
+
+sub izip_from_iterable {
+    my $iterables = list(imap { iter($_) } shift);
+    return iter_code(sub { return [ map { $_->() } @$iterables ] });
 }
+
+
+sub izip { izip_from_iterable(\@_) }
 
 
 sub izip_longest_from_iterable {
-    # TODO: filler option
-    my @iters = @_;
+    my $iterables = list(imap { iter($_) } shift);
+    my $filler = shift;
+    my $exhausted = 0;
+    return iter_code(sub {
+        my @rv;
+        foreach my $iter (@$iterables) {
+            push(
+                @rv,
+                try {
+                    $iter->() if $iter
+                }
+                catch_stop {
+                    undef($iter);
+                    $exhausted++;
+                    return $filler;
+                }
+            );
+        }
+        STOP_ITERATION->throw if $exhausted == @$iterables;
+        return \@rv;
+    });
 }
+
+
+sub izip_longest { izip_longest_from_iterable(\@_) }
+
 
 1;
