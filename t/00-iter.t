@@ -10,10 +10,9 @@ use Try::Tiny;
 use List::Itertools qw(STOP_ITERATION NOT_ITERABLE iter is_iter catch_stop for_each list);
 
 
-plan tests => 10;
+plan tests => 9;
 
 
-ok((try { iter(1, 2, 3) and 0 } catch { /requires 1 parameter/ }), 'iter requires 1 parameter');
 ok((try { iter(1) and 0 } catch { $_->isa(NOT_ITERABLE) }), 'iter requires iterable');
 
 {

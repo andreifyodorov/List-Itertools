@@ -20,15 +20,17 @@ use Exception::Class (
 use Exporter 'import';
 our @EXPORT_OK = qw(
     STOP_ITERATION NOT_ITERABLE
-    iter is_iter catch_stop for_each list imap
+    iter is_iter catch_stop for_each list imap igrep
+    count range
     chain chain_from_iterable izip izip_from_iterable izip_longest izip_longest_from_iterable
+    product product_from_iterable
 );
 
 
-sub iter_code { bless $_[0] => __PACKAGE__ }
+sub iter_code($) { bless $_[0] => __PACKAGE__ }
 
 
-sub iter_array {
+sub iter_array($) {
     my $list = shift;
     my $i = 0;
     return iter_code(sub {
@@ -40,10 +42,6 @@ sub iter_array {
     });
 }
 
-
-sub range($;$$) {
-    # TODO
-}
 
 sub catch_stop(&) {
     my $code = shift;
@@ -72,10 +70,10 @@ sub next_tuple() {
 }
 
 
-sub is_iter { blessed($_[0]) && $_[0]->can('next') }
+sub is_iter($) { blessed($_[0]) && $_[0]->can('next') }
 
 
-sub iter {
+sub iter($) {
     my $whatnot = shift;
     @_ and die(sprintf("iter requires 1 parameter %d given", @_));
     return $whatnot if is_iter($whatnot);
@@ -85,7 +83,7 @@ sub iter {
 }
 
 
-sub imap(&;@) {
+sub imap(&$) {
     my $code = shift;
     my $iter = iter(shift);
     iter_code(sub {
@@ -95,14 +93,26 @@ sub imap(&;@) {
 }
 
 
-sub for_each {
+sub igrep(&$) {
+    my $code = shift;
+    my $iter = iter(shift);
+    iter_code(sub {
+        while (1) {
+            local $_ = $iter->();
+            return $_ if $code->();
+        }
+    });
+}
+
+
+sub for_each($&) {
     my $whatnot = shift;
     my $code = shift;
     for (my $iter = imap { $code->() } $whatnot; $iter->next; ) {}
 }
 
 
-sub list {
+sub list($) {
     my $iter = shift;
     return [@$iter] if ref($iter) eq 'ARRAY';
     my @rv;
@@ -111,7 +121,32 @@ sub list {
 }
 
 
-sub chain_from_iterable {
+sub count(;$$) {
+    my ($firstval, $step) = @_;
+    $step //= 1;    
+    my $nextval = $firstval // 0;
+    return iter_code(sub {
+        my $rv = $nextval;
+        $nextval += $step;
+        return $rv;
+    });
+}
+
+
+sub range($;$$) {
+    my ($start, $stop, $step) = @_ == 1 ? (0, shift) : @_;
+    $step //= 1;
+    die "Step arguent must not be zero" unless $step;
+    my $iter = count($start, $step);
+    return iter_code(sub {
+        my $rv = $iter->next;
+        STOP_ITERATION->throw if $rv > $stop;
+        return $rv;
+    });
+}
+
+
+sub chain_from_iterable($) {
     my $iters = iter(shift);
     my $iter;
     return iter_code(sub {
@@ -128,7 +163,7 @@ sub chain_from_iterable {
 sub chain { chain_from_iterable(\@_) }
 
 
-sub izip_from_iterable {
+sub izip_from_iterable($) {
     my $iterables = list(imap { iter($_) } shift);
     return iter_code(sub { return [ map { $_->() } @$iterables ] });
 }
@@ -137,7 +172,7 @@ sub izip_from_iterable {
 sub izip { izip_from_iterable(\@_) }
 
 
-sub izip_longest_from_iterable {
+sub izip_longest_from_iterable($) {
     my $iterables = list(imap { iter($_) } shift);
     my $filler = shift;
     my $exhausted = 0;
@@ -163,6 +198,14 @@ sub izip_longest_from_iterable {
 
 
 sub izip_longest { izip_longest_from_iterable(\@_) }
+
+
+sub product_from_iterable($) {
+}
+
+
+sub product {
+}
 
 
 1;
