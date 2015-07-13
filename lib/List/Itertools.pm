@@ -2,9 +2,11 @@
 
 package List::Itertools;
 
+use 5.014;
 use strict;
 use warnings;
 use Carp::Always;
+use Data::Dumper 'Dumper';
 
 use constant STOP_ITERATION => __PACKAGE__ . '::Exceptions::StopIteration';
 use constant NOT_ITERABLE => __PACKAGE__ . '::Exceptions::NotIterable';
@@ -19,11 +21,26 @@ use Exception::Class (
 
 use Exporter 'import';
 our @EXPORT_OK = qw(
-    STOP_ITERATION NOT_ITERABLE
-    iter is_iter catch_stop for_each list imap igrep
-    count range
-    chain chain_from_iterable izip izip_from_iterable izip_longest izip_longest_from_iterable
-    product product_from_iterable
+    STOP_ITERATION
+    NOT_ITERABLE
+    iter
+    is_iter
+    catch_stop
+    for_each
+    list
+    imap
+    igrep
+    count
+    range
+    chain
+    chain_from_iterable
+    izip
+    izip_from_iterable
+    izip_longest
+    izip_longest_from_iterable
+    groupby
+    product
+    product_from_iterable
 );
 
 
@@ -123,7 +140,7 @@ sub list($) {
 
 sub count(;$$) {
     my ($firstval, $step) = @_;
-    $step //= 1;    
+    $step //= 1;
     my $nextval = $firstval // 0;
     return iter_code(sub {
         my $rv = $nextval;
@@ -198,6 +215,46 @@ sub izip_longest_from_iterable($) {
 
 
 sub izip_longest { izip_longest_from_iterable(\@_) }
+
+
+sub _equal {
+    # In the contrast of proper programming languages,
+    # Perl's equality operators do not produce binary relation,
+    # as a result of camparison could be one of these three:
+    # false, true, and true with warning.
+    my ($a, $b) = @_;
+    return defined($a) && defined($b) && $a eq $b || !defined($a) && !defined($b);
+    # If someone somewhere does actually dream in Perl,
+    # as Larry Wall once claimed he does, that should be an effing nightmare.
+}
+
+
+sub groupby(&$) {
+    my $keyfunc = shift;
+    my $iter = iter(shift);
+    my ($tgtkey, $currkey, $curritem, $warmedup);
+    my $next = sub {
+        local $_ = $curritem = $iter->();
+        $currkey = $keyfunc->();
+    };
+    return iter_code(sub {
+        if ($warmedup) {
+            $next->() while _equal($tgtkey, $currkey);
+        }
+        else {
+            $next->();
+            $warmedup = 1;
+        }
+        $tgtkey = $currkey;
+        return [$tgtkey => iter_code(sub {
+            state $exhausted;
+            STOP_ITERATION->throw if $exhausted;
+            my $rv = $curritem;
+            $exhausted = try { !_equal($tgtkey, $next->()) } catch_stop { 1 };
+            return $rv;
+        })];
+    });
+}
 
 
 sub product_from_iterable($) {
